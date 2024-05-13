@@ -1,0 +1,280 @@
+// Classe - Cadastrar clientes por arquivo
+
+// Campos:
+// Arquivo
+// Nome
+// Idade
+// Cargo
+// Salário
+// Tipo
+// Número de clientes presentes no arquivo
+// Deseja adicionar esses clientes à lista de clientes?
+// Objeto foi criado
+
+// Scripts:
+
+// Atualizar rascunho:
+
+// Script 1 - Importação de dados via PDF ( em desenvolvimento )
+
+// PDF
+if(_object.arquivo){
+  _object.output = _object.arquivo.getContentAsText("utf-8");
+  _object.tIPO = _object.arquivo.contentType
+  
+  if(_object.tIPO === "application/pdf"){
+      if(camposExistem()){
+          verificarSeCamposEstaoPreenchidosPDF();
+      } 
+  }
+  
+}
+
+
+function verificarSeCamposEstaoPreenchidosPDF(){
+    
+    const regexParaVerificarNome = /Nome :\s*(?!Idade\b)(\w+)\b/;
+    const regexParaVerificarIdade = /Idade :\s*(?!Cargo\b)(\w+)\b/;
+    const regexParaVerificarCargo = /Cargo :\s*(?!Salário\b)(\w+)\b/;
+    const regexParaVerificarSalario = /Salário :\s*(\w+)\b/;
+       
+    if(!regexParaVerificarNome.test(_object.output)){
+        throw "O campo de nome não está preenchido.";
+    }
+    if(!regexParaVerificarIdade.test(_object.output)){
+        throw "O campo de Idade não está preenchido.";
+    }
+    if(!regexParaVerificarCargo.test(_object.output)){
+        throw "O campo de Cargo não está preenchido.";
+    }
+    if(!regexParaVerificarSalario.test(_object.output)){
+        throw "O campo de Salário não está preenchido.";
+    }
+    
+    capturaDadosDoArquivo(regexParaVerificarNome,"nome");
+    capturaDadosDoArquivo(regexParaVerificarIdade,"idade");
+    capturaDadosDoArquivo(regexParaVerificarCargo, "cargo");
+    capturaDadosDoArquivo(regexParaVerificarSalario, "salario");
+}
+
+function camposExistem(){
+    return (_object.output.includes("Nome") && _object.output.includes("Idade") && _object.output.includes("Cargo") && _object.output.includes("Salário"))
+}
+
+function capturaDadosDoArquivo(regex,dado){
+    const textoExtraidoDoArquivo = _object.output;
+    const dadoCapturado = textoExtraidoDoArquivo.match(regex);
+    _object[dado] = dadoCapturado[1];
+}
+
+// Script 2
+// Importação de dados via Excel ( xlsx ) - Funcionando
+
+if(_object.arquivo){
+    if(_object.arquivo.contentType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"){
+        const texto = _object.output;
+        
+        const regex = /Folha\d+/;
+        
+        let linhasDaTabela;
+        
+        let removerTextoFolha = texto.split(regex);
+        linhasDaTabela = removerTextoFolha[1];
+        linhasDaTabela = linhasDaTabela.split("\t")
+        
+        let dadosFormatados = '';
+        let arrayDeClientes = []
+        
+        // Itera sobre o array, pulando de 4 em 4 para agrupar os dados de cada linha
+        for (let i = 0; i < linhasDaTabela.length - 1; i += 4) {
+            const nome = linhasDaTabela[i];
+            const idade = linhasDaTabela[i + 1];
+            const cargo = linhasDaTabela[i + 2];
+            const salario = linhasDaTabela[i + 3];
+        
+            // Adiciona o nome e a idade ao resultado, separados por ";", seguido por "/"
+            dadosFormatados += nome + ";" + idade + ";" + cargo + ";" + salario + "/";
+        }
+        
+        let dadosPorNome = dadosFormatados.split("/");
+        
+        dadosPorNome.forEach((dado) => {
+            arrayDeClientes.push(dado.split(';'))
+        })
+        
+        _object.numeroDeClientesPresentesNoArquivo = (arrayDeClientes.length - 2);
+        
+    if(_object.desejaAdicionarEssesClientesAListaDeClientes === true){
+        let nomesIguais = [];
+        let nomeDosClientes = [];
+        arrayDeClientes.forEach(cliente => {
+            nomeDosClientes.push(cliente[0])
+        })
+        
+        for(let i = 0; i < arrayDeClientes.length; i++){
+           let buscaNomeIgual = leituraDeArquivosAdriel.ClientesCadastradosPorArquivo._search({
+                "query": {
+                    "bool": {
+                        "must": [
+                            {
+                                "exists": {
+                                    "field": "nome"
+                                }
+                            },
+                            {
+                                "term": {
+                                    "nome.keyword": nomeDosClientes[i]
+                                }
+                            }
+                        ]
+                    }
+                }
+            });
+            
+           
+            if(buscaNomeIgual.hits.hits.length > 0){
+               nomesIguais.push(nomeDosClientes[i]);
+            }
+            
+        }
+
+        if(nomesIguais.length > 0 && nomesIguais.length !== _object.numeroDeClientesPresentesNoArquivo){
+               _utils.addWarningMessage("os Clientes " + nomesIguais + " já estão na sua lista, portanto não foram adicionados.")
+        }
+        
+        if(nomesIguais.length === _object.numeroDeClientesPresentesNoArquivo){
+               throw "Todos os clientes presentes na lista já estão cadastrados no sistema";
+        }
+        
+    
+        arrayDeClientes.forEach((cliente) => {
+            if(!cliente[0].includes("Nome") && cliente[0] !== "" && !nomesIguais.includes(cliente[0])){
+                 _utils.addInfoMessage("Cliente " + cliente[0] + " foi adicionado com sucesso")
+                leituraDeArquivosAdriel.ClientesCadastradosPorArquivo._create({
+                nome: cliente[0],
+                idade: cliente[1],
+                cargo: cliente[2],
+                salario: cliente[3],
+                arquivoDeOrigem: _object.arquivo
+                })
+            }
+        })
+        
+    }
+    }
+ 
+ }
+
+// Script 3 
+// Importação de dados via JSON - Funcionando
+
+//JSON ( txt )
+if(_object){
+    if(_object.arquivo && _object.arquivo.contentType === "text/plain"){
+       const dados = _object.output
+       const dadosFormatados = JSON.parse(dados)
+       _object.numeroDeClientesPresentesNoArquivo = dadosFormatados.length;
+       
+     if(_object.desejaAdicionarEssesClientesAListaDeClientes === true){
+         const nomesIguais = buscarNomeIgual(dadosFormatados);
+          dadosFormatados.forEach(dado => {
+              if(!nomesIguais.includes(dado.nome)){
+                 leituraDeArquivosAdriel.ClientesCadastradosPorArquivo._create({
+                 nome: dado.nome,
+                 idade: dado.idade,
+                 cargo: dado.cargo,
+                 salario: dado.salario,
+                 arquivoDeOrigem: _object.arquivo
+                    })
+                }
+           })
+        }
+    }
+}
+
+
+
+function buscarNomeIgual(arrayDeDados){
+    const nomesIguais = [];
+    arrayDeDados.forEach(dado => {
+         let buscaNomeIgual = leituraDeArquivosAdriel.ClientesCadastradosPorArquivo._search({
+                "query": {
+                    "bool": {
+                        "must": [
+                            {
+                                "exists": {
+                                    "field": "nome"
+                                }
+                            },
+                            {
+                                "term": {
+                                    "nome.keyword": dado.nome
+                                }
+                            }
+                        ]
+                    }
+                }
+            })
+            
+            if(buscaNomeIgual.hits.hits.length > 0){
+                nomesIguais.push(dado.nome)
+            }
+            
+        
+    })
+    
+     if(nomesIguais.length > 0 && nomesIguais.length !== _object.numeroDeClientesPresentesNoArquivo){
+                _utils.addWarningMessage("os Clientes " + nomesIguais + " já estão na sua lista, portanto não foram adicionados.");
+            }
+            
+            if(nomesIguais.length === _object.numeroDeClientesPresentesNoArquivo){
+              throw "Todos os clientes presentes na lista já estão cadastrados no sistema";
+        }
+    return nomesIguais;
+}
+
+// Script 4
+// Limpar campos quando não houver nenhum arquivo importado
+
+if(!_object.arquivo){
+    _object.cargo = ""
+    _object.idade = ""
+    _object.nome = ""
+    _object.output = ""
+    _object.salario = ""
+    _object.tIPO = ""
+    _object.arrayDeClientes = ""
+}
+
+// Obter Metadata
+
+// Script 1:
+
+if(!_object) return
+
+    if(_object.arquivo){
+        if(_object.arquivo.contentType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"){
+            _metadata.fields.numeroDeClientesPresentesNoArquivo.hidden = false;
+            _metadata.fields.desejaAdicionarEssesClientesAListaDeClientes.hidden = false;
+            _metadata.fields.cargo.hidden = true;
+            _metadata.fields.idade.hidden = true;
+            _metadata.fields.nome.hidden = true;
+            _metadata.fields.salario.hidden = true;
+        }
+         if(_object.arquivo.contentType === "text/plain"){
+            _metadata.fields.desejaAdicionarEssesClientesAListaDeClientes.hidden = false;
+        }
+        if(_object.arquivo.contentType === "application/pdf"){
+            _metadata.fields.numeroDeClientesPresentesNoArquivo.hidden = false;
+            _metadata.fields.desejaAdicionarEssesClientesAListaDeClientes.hidden = false;
+            _metadata.fields.output.hidden = false;
+        }
+        
+        
+        
+        if(_object.desejaAdicionarEssesClientesAListaDeClientes === true){
+            _metadata.fields.desejaAdicionarEssesClientesAListaDeClientes.readOnly = true;
+            _metadata.fields.arquivo.readOnly = true;
+        }
+    }
+
