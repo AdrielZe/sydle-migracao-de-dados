@@ -1,0 +1,9 @@
+// Campos:
+
+// Nome
+// Idade
+// Cargo
+// Salário
+// Arquivo de Origem
+
+//Nenhum método até o momento
